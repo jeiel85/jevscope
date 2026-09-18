@@ -1,0 +1,5 @@
+{"id":"healthy-1","state":{"hp":95,"maxHp":100,"enemyCount":1,"nearestEnemyDistance":12,"ammo":8,"healingItems":1,"specialReady":true}}
+{"id":"low-hp-1","state":{"hp":14,"maxHp":100,"enemyCount":4,"nearestEnemyDistance":3,"ammo":2,"healingItems":1,"specialReady":true}}
+{"id":"no-ammo-1","state":{"hp":68,"maxHp":100,"enemyCount":2,"nearestEnemyDistance":8,"ammo":0,"healingItems":0,"specialReady":true}}
+{"id":"critical-1","state":{"hp":6,"maxHp":100,"enemyCount":5,"nearestEnemyDistance":2,"ammo":1,"healingItems":0,"specialReady":false}}
+{"id":"balanced-1","state":{"hp":62,"maxHp":100,"enemyCount":2,"nearestEnemyDistance":10,"ammo":5,"healingItems":1,"specialReady":false}}

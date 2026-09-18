@@ -1,0 +1,33 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: input
+    id: version
+    attributes:
+      label: JevScope version / commit
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - TypeSafe Jev
+        - Mock
+        - Other

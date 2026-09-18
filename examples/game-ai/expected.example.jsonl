@@ -1,0 +1,2 @@
+{"id":"low-hp-1","expect":{"nextAction":{"choiceOneOf":["heal","retreat"]},"danger":{"scoreMin":2.0}}}
+{"id":"critical-1","expect":{"nextAction":{"choiceOneOf":["retreat","wait"]},"danger":{"scoreMin":2.5}}}

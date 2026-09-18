@@ -1,0 +1,21 @@
+{
+  "bundle": "jevscope-design-bundle",
+  "created": "2026-09-19",
+  "purpose": "GitHub-ready design bundle and starter scaffold for JevScope",
+  "fileCount": 59,
+  "verifiedAgainst": {
+    "typesafeSdk": "@typesafe-ai/sdk 0.6.0 repository state observed 2026-09-19",
+    "node": "20+",
+    "questionTypes": [
+      "choice",
+      "score",
+      "noul"
+    ]
+  },
+  "validationNotes": [
+    "All JSON and JSONL files parsed successfully",
+    "Example project passed local structural validator",
+    "ZIP integrity test passed",
+    "Full dependency install/typecheck could not be executed in the artifact container because outbound npm registry access is unavailable"
+  ]
+}

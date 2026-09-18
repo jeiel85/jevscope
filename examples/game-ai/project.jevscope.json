@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "RPG Battle Director",
+  "description": "Reference JevScope project for a small combat decision demo.",
+  "provider": {
+    "type": "typesafe",
+    "model": "jev-latest"
+  },
+  "questions": {
+    "nextAction": {
+      "type": "choice",
+      "instructions": "Choose the best immediate combat action while preserving survival and resources.",
+      "criteria": {
+        "attack": "Engage the enemy now.",
+        "retreat": "Create distance and reduce immediate risk.",
+        "heal": "Use a healing item now.",
+        "wait": "Delay commitment for the moment."
+      }
+    },
+    "danger": {
+      "type": "score",
+      "instructions": "Rate current danger to the player.",
+      "criteria": [
+        "Safe",
+        "Manageable",
+        "Dangerous",
+        "Critical"
+      ]
+    },
+    "shouldUseSpecial": {
+      "type": "noul",
+      "instructions": "Should the player consume the special ability now?",
+      "criteria": {
+        "true": "Immediate benefit justifies consuming the special ability.",
+        "false": "The special ability should be preserved."
+      }
+    }
+  },
+  "policy": {
+    "choiceConfidence": {
+      "auto": 0.85,
+      "review": 0.6
+    },
+    "scoreConfidence": {
+      "auto": 0.85,
+      "review": 0.6
+    },
+    "noul": {
+      "yes": 0.8,
+      "no": 0.2
+    }
+  }
+}

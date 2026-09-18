@@ -1,0 +1,19 @@
+{
+  "name": "jevscope",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Visual decision debugger and regression testbench for TypeSafe AI Jev",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @jevscope/api --filter @jevscope/studio dev",
+    "dev:api": "pnpm --filter @jevscope/api dev",
+    "dev:studio": "pnpm --filter @jevscope/studio dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "validate:example": "node scripts/validate-project.mjs examples/game-ai/project.jevscope.json"
+  }
+}
