@@ -7,7 +7,7 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 // TypeSafe System One top-level entry semantics.
-export type EntryValue = string | JsonValue[] | { [key: string]: JsonValue } | null;
+type EntryValue = string | unknown[] | Record<string, unknown> | null;
 
 export type EvaluationRequest = {
   state: EntryValue;

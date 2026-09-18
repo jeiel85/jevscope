@@ -89,6 +89,26 @@ export const projectSchema = z.object({
   }),
 });
 
+export const expectationSchema = z.object({
+  choiceEquals: z.string().optional(),
+  choiceOneOf: z.array(z.string()).min(1).optional(),
+  minConfidence: z.number().min(0).max(1).optional(),
+  scoreMin: z.number().optional(),
+  scoreMax: z.number().optional(),
+  scoreApprox: z.number().optional(),
+  tolerance: z.number().min(0).optional(),
+  noulMin: z.number().min(0).max(1).optional(),
+  noulMax: z.number().min(0).max(1).optional(),
+}).strict();
+
+export const caseSchema = z.object({
+  id: z.string().min(1),
+  state: entrySchema,
+  expect: z.record(z.string(), expectationSchema).optional(),
+}).strict();
+
+export type EvaluationCase = z.infer<typeof caseSchema>;
+
 export type JevScopeProject = z.infer<typeof projectSchema>;
 export type QuestionDefinition = z.infer<typeof questionSchema>;
 export type EntryValue = z.infer<typeof entrySchema>;

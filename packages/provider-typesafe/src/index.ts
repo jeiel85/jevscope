@@ -5,6 +5,11 @@ import type {
   EvaluationResult,
 } from "@jevscope/core";
 
+export function normalizeResponse(response: { model: string; answers: Record<string, unknown>; usage?: { input_tokens: number; output_tokens: number } }, latencyMs: number): EvaluationResult {
+  return { provider: "typesafe", model: response.model, answers: response.answers, usage: response.usage,
+    meta: { latencyMs, timestamp: new Date().toISOString() } };
+}
+
 export class TypeSafeDecisionProvider implements DecisionProvider {
   readonly #client: TypeSafeClient;
 
@@ -25,17 +30,8 @@ export class TypeSafeDecisionProvider implements DecisionProvider {
       state: request.state,
       questions: request.questions,
       model: request.model,
-    } as any);
+    } as any, { timeout: 30_000, retry: { maxRetries: 0 } });
 
-    return {
-      provider: this.id(),
-      model: response.model,
-      answers: response.answers as Record<string, unknown>,
-      usage: response.usage,
-      meta: {
-        latencyMs: Math.round(performance.now() - started),
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return normalizeResponse(response, Math.round(performance.now() - started));
   }
 }

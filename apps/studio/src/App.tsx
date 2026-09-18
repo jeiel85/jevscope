@@ -1,116 +1,47 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { QuestionEditor } from "./QuestionEditor.js";
+import { projectSchema, entrySchema, classifyConfidence, classifyNoul, type JevScopeProject, type EvaluationResult } from "@jevscope/core";
+import { parseCases, runBatch, summarize, compare, type CaseOutcome } from "@jevscope/evaluator";
+import example from "../../../examples/game-ai/project.jevscope.json";
+import casesExample from "../../../examples/game-ai/cases.jsonl?raw";
 
-const initialState = JSON.stringify(
-  { hp: 32, maxHp: 100, enemyCount: 4, ammo: 2, healingItems: 1 },
-  null,
-  2,
-);
-
-const questions = {
-  nextAction: {
-    type: "choice",
-    instructions: "Choose the most appropriate immediate combat action.",
-    criteria: {
-      attack: "Engage the enemy.",
-      retreat: "Create distance.",
-      heal: "Use healing if justified.",
-      wait: "Delay commitment.",
-    },
-  },
-  danger: {
-    type: "score",
-    instructions: "Rate current danger.",
-    criteria: ["Safe", "Manageable", "Dangerous", "Critical"],
-  },
-  shouldUseSpecial: {
-    type: "noul",
-    instructions: "Should the special ability be used now?",
-  },
-} as const;
-
+type Screen = "Workbench" | "Batch" | "Compare" | "History";
+type RecordItem = { id: string; createdAt: string; projectHash: string; stateHash: string; request: unknown; result?: EvaluationResult; error?: string };
+const api = import.meta.env.VITE_API_URL ?? "http://localhost:4317";
+const format = (v: unknown) => JSON.stringify(v, null, 2);
+const hash = async (value: unknown) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value))))).map(x => x.toString(16).padStart(2, "0")).join("");
+function download(name: string, contents: string, type = "application/json") { const url = URL.createObjectURL(new Blob([contents], { type })); const link = document.createElement("a"); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url); }
+function db(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const request = indexedDB.open("jevscope", 1); request.onupgradeneeded = () => request.result.createObjectStore("runs", { keyPath: "id" }); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); }); }
+async function history(action: "list" | "clear" | "put", record?: RecordItem): Promise<RecordItem[]> { const database = await db(); return new Promise((resolve, reject) => { const tx = database.transaction("runs", action === "list" ? "readonly" : "readwrite"); const store = tx.objectStore("runs"); const request = action === "list" ? store.getAll() : action === "clear" ? store.clear() : store.put(record!); request.onsuccess = () => resolve(action === "list" ? (request.result as RecordItem[]).reverse() : []); request.onerror = () => reject(request.error); tx.oncomplete = () => database.close(); }); }
+const answer = (raw: unknown) => raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+const number = (v: unknown) => typeof v === "number" ? v.toFixed(3) : "—";
+const probability = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
+async function evaluate(state: unknown, project: JevScopeProject, signal?: AbortSignal): Promise<EvaluationResult> { const response = await fetch(`${api}/api/evaluate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ state, questions: project.questions, model: project.provider.model }), signal }); const body = await response.json(); if (!response.ok) throw Object.assign(new Error(body?.error?.message ?? `HTTP ${response.status}`), { code: body?.error?.code }); return body; }
+function Result({ result, project }: { result: EvaluationResult; project: JevScopeProject }) { return <div className="results">{Object.entries(result.answers).map(([name, raw]) => { const v = answer(raw), q = project.questions[name]; if (!q) return null; const confidence = typeof v.confidence === "number" ? v.confidence : null; const bucket = q.type === "noul" ? classifyNoul(Number(v.noul), project.policy.noul) : confidence === null ? "unknown" : classifyConfidence(confidence, q.type === "choice" ? project.policy.choiceConfidence : project.policy.scoreConfidence); const distribution = v.probabilities && typeof v.probabilities === "object" ? Object.entries(v.probabilities) : []; return <section className="result-card" key={name}><div className="row"><h3>{name}</h3><span className="tag">{q.type}</span></div>{q.type === "choice" ? <><p className="main-value">{String(v.choice ?? "—")}</p><p>Selected confidence: {number(confidence)}</p></> : q.type === "score" ? <><p className="main-value">{number(v.score)}</p><p>Expected score · confidence {number(confidence)}</p><p className="muted">Legend: {v.legend && typeof v.legend === "object" ? Object.entries(v.legend).map(([k,x]) => `${k}: ${typeof x === "string" ? x : format(x)}`).join(" · ") : "—"}</p></> : <><p className="main-value">{number(v.noul)}</p><p>Raw YES probability</p></>}{distribution.map(([label, value]) => <div className="bar-row" key={label}><span>{label}</span><div className="bar"><i style={{width: `${probability(value)}%`}} /></div><strong>{number(value)}</strong></div>)}<p className="policy">JevScope policy: <strong>{bucket.toUpperCase()}</strong></p></section>; })}<details><summary>Raw provider result</summary><pre>{format(result)}</pre></details><p className="muted">{result.provider} · {result.model} · {result.meta?.latencyMs} ms · {result.meta?.timestamp} · tokens {result.usage?.input_tokens ?? "—"}/{result.usage?.output_tokens ?? "—"}</p></div>; }
 export function App() {
-  const [stateText, setStateText] = useState(initialState);
-  const [result, setResult] = useState<unknown>(null);
-  const [error, setError] = useState("");
-  const [running, setRunning] = useState(false);
-
-  const stateValid = useMemo(() => {
-    try {
-      JSON.parse(stateText);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [stateText]);
-
-  async function run() {
-    setError("");
-    setRunning(true);
-    try {
-      const response = await fetch("http://localhost:4317/api/evaluate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          state: JSON.parse(stateText),
-          questions,
-          model: "jev-latest",
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message ?? "Request failed");
-      setResult(body);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  return (
-    <main>
-      <header>
-        <div>
-          <strong>JevScope</strong>
-          <span className="muted"> Decision Workbench</span>
-        </div>
-        <button disabled={!stateValid || running} onClick={run}>
-          {running ? "Running…" : "Run ▶"}
-        </button>
-      </header>
-
-      <section className="grid">
-        <article>
-          <h2>STATE</h2>
-          <textarea
-            aria-label="State JSON"
-            value={stateText}
-            onChange={(e) => setStateText(e.target.value)}
-          />
-          {!stateValid && <p className="error">Invalid JSON</p>}
-        </article>
-
-        <article>
-          <h2>QUESTIONS</h2>
-          {Object.entries(questions).map(([name, q]) => (
-            <div className="question" key={name}>
-              <strong>{name}</strong>
-              <span>{q.type}</span>
-              <p>{q.instructions}</p>
-            </div>
-          ))}
-        </article>
-
-        <article>
-          <h2>RESULT</h2>
-          {error && <p className="error">{error}</p>}
-          {!error && !result && <p className="muted">Run an evaluation to inspect Jev output.</p>}
-          {result && <pre>{JSON.stringify(result, null, 2)}</pre>}
-        </article>
-      </section>
-
-      <footer>
-        Starter scaffold only — implement visual probability inspector from docs/05-ux-design.md
-      </footer>
-    </main>
-  );
+ const [screen, setScreen] = useState<Screen>("Workbench"), [projectText, setProjectText] = useState(format(example)), [stateText, setStateText] = useState(format({ hp: 32, maxHp: 100, enemyCount: 4, ammo: 2, healingItems: 1 })), [casesText, setCasesText] = useState(casesExample), [variantText, setVariantText] = useState(format(example));
+ const [result, setResult] = useState<EvaluationResult | null>(null), [error, setError] = useState(""), [running, setRunning] = useState(false), [outcomes, setOutcomes] = useState<CaseOutcome[]>([]), [variantOutcomes, setVariantOutcomes] = useState<CaseOutcome[]>([]), [records, setRecords] = useState<RecordItem[]>([]), [concurrency, setConcurrency] = useState(4), [changedOnly, setChangedOnly] = useState(false);
+ const controller = useRef<AbortController | null>(null), file = useRef<HTMLInputElement>(null), variantFile = useRef<HTMLInputElement>(null), casesFile = useRef<HTMLInputElement>(null);
+ const project = useMemo(() => { try { return projectSchema.parse(JSON.parse(projectText)); } catch { return null; } }, [projectText]);
+ const variant = useMemo(() => { try { return projectSchema.parse(JSON.parse(variantText)); } catch { return null; } }, [variantText]);
+ const cases = useMemo(() => { try { return { value: parseCases(casesText), error: "" }; } catch (e) { return { value: [], error: e instanceof Error ? e.message : "Invalid cases" }; } }, [casesText]);
+ const parsedState = useMemo(() => { try { return { valid: true, value: entrySchema.parse(JSON.parse(stateText)) }; } catch { return { valid: false, value: null }; } }, [stateText]);
+ useEffect(() => { history("list").then(setRecords).catch(() => setError("Unable to open local history")); }, []);
+ const validation = useMemo(() => { try { projectSchema.parse(JSON.parse(projectText)); return ""; } catch(e) { return e instanceof Error ? e.message : "Invalid project"; } }, [projectText]);
+ async function runSingle() { if (!project || !parsedState.valid) return; const state = parsedState.value; setRunning(true); setError(""); const request = {state, questions: project.questions, model: project.provider.model}; try { const value = await evaluate(state, project); setResult(value); const item: RecordItem = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), projectHash: await hash(project), stateHash: await hash(state), request, result: value }; await history("put", item); setRecords(await history("list")); } catch(e) { const message = e instanceof Error ? e.message : "Evaluation failed"; setError(message); const item: RecordItem = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), projectHash: await hash(project), stateHash: await hash(state), request, error: message }; await history("put", item); setRecords(await history("list")); } finally { setRunning(false); } }
+ async function runCases(both = false) { if (!project || (both && !variant) || cases.error) return; controller.current = new AbortController(); setRunning(true); setError(""); try { const left = await runBatch(cases.value, project, evaluate, concurrency, controller.current.signal); setOutcomes(left); if (both && !controller.current.signal.aborted) setVariantOutcomes(await runBatch(cases.value, variant!, evaluate, concurrency, controller.current.signal)); } catch(e) { setError(e instanceof Error ? e.message : "Batch failed"); } finally { setRunning(false); controller.current = null; } }
+ async function readFile(input: HTMLInputElement | null, setter: (v: string) => void) { const selected = input?.files?.[0]; if (selected) setter(await selected.text()); if (input) input.value = ""; }
+ const comparison = project && variant ? compare(outcomes, variantOutcomes, project, variant) : [];
+ return <main><header><div><strong className="brand">JevScope</strong><span className="muted"> Decision workbench</span></div><nav aria-label="Main">{(["Workbench", "Batch", "Compare", "History"] as Screen[]).map(x => <button className={screen === x ? "active" : ""} key={x} onClick={() => setScreen(x)}>{x}</button>)}</nav></header>
+ <div className="toolbar"><strong>{project?.name ?? "Invalid project"}</strong><span className="muted">Local-first · TypeSafe Jev · schema v1</span><div className="spacer"/><input hidden ref={file} type="file" accept=".json,.jevscope.json" onChange={() => readFile(file.current, setProjectText)} /><button onClick={() => file.current?.click()}>Open project</button><button onClick={() => setProjectText(format(example))}>Load example</button><button disabled={!project} onClick={() => download(`${project?.name ?? "project"}.jevscope.json`, format(project))}>Save project</button></div>
+ {error && <div role="alert" className="alert">{error}</div>}
+ {screen === "Workbench" && <div className="grid"><article><h2>STATE</h2><textarea aria-label="State JSON" value={stateText} onChange={e => setStateText(e.target.value)} />{!parsedState.valid && <p className="error">State must be valid JSON text, object, array, or null.</p>}</article><article><h2>PROJECT & QUESTIONS</h2><p className="muted">Edit project JSON to define named choice, score, and noul questions and policy thresholds.</p><p className="muted">Live runs send state and questions to TypeSafe AI through your local API. Keep sensitive states out of test data unless authorized.</p>{project && <QuestionEditor project={project} onChange={next => setProjectText(format(next))}/>}<textarea aria-label="Project JSON" value={projectText} onChange={e => setProjectText(e.target.value)} />{validation && <p className="error">{validation}</p>}</article><article><div className="row"><h2>RESULT</h2><button className="primary" disabled={!project || !parsedState.valid || running} onClick={runSingle}>{running ? "Running…" : "Run ▶"}</button></div>{result ? <Result result={result} project={project!} /> : <p className="muted">Run a decision to inspect probabilities and JevScope policy.</p>}</article></div>}
+ {(screen === "Batch" || screen === "Compare") && <div className="workspace"><div className="row"><div><h2>{screen.toUpperCase()}</h2><p className="muted">Import JSONL cases. Every line is validated before any call.</p></div><div className="spacer"/><label>Concurrency <input type="number" min="1" max="16" value={concurrency} onChange={e => setConcurrency(Number(e.target.value))}/></label><button disabled={!project || !!cases.error || running || (screen === "Compare" && !variant)} onClick={() => runCases(screen === "Compare")}>{running ? "Running…" : screen === "Compare" ? "Run A/B" : "Run batch"}</button><button disabled={!running} onClick={() => controller.current?.abort()}>Stop</button></div><div className="panels"><section><div className="row"><h3>Cases ({cases.value.length})</h3><div className="spacer"/><input hidden type="file" accept=".jsonl,.txt" ref={casesFile} onChange={() => readFile(casesFile.current, setCasesText)}/><button onClick={() => casesFile.current?.click()}>Import JSONL</button></div><textarea aria-label="Cases JSONL" value={casesText} onChange={e => setCasesText(e.target.value)}/>{cases.error && <p className="error">{cases.error}</p>}</section>{screen === "Compare" && <section><div className="row"><h3>Variant B</h3><div className="spacer"/><input hidden type="file" accept=".json,.jevscope.json" ref={variantFile} onChange={() => readFile(variantFile.current, setVariantText)}/><button onClick={() => variantFile.current?.click()}>Open B</button></div><textarea aria-label="Variant B project JSON" value={variantText} onChange={e => setVariantText(e.target.value)}/>{!variant && <p className="error">Invalid variant project</p>}</section>}</div>{outcomes.length > 0 && project && <section className="report"><div className="row"><h3>{screen === "Compare" ? "Comparison" : "Batch report"}</h3><div className="spacer"/><button onClick={() => download("jevscope-report.json", format(screen === "Compare" ? comparison : {summary: summarize(outcomes, project), outcomes}))}>Export report</button>{screen === "Batch" && <button disabled={!outcomes.some(o => o.errorCode === "rate_limit" || o.errorCode === "provider_timeout")} onClick={async () => { if (!project) return; const retryIds = new Set(outcomes.filter(o => o.errorCode === "rate_limit" || o.errorCode === "provider_timeout").map(o => o.id)); setRunning(true); try { const replacements = await runBatch(cases.value.filter(c => retryIds.has(c.id)), project, evaluate, concurrency); const byId = new Map(replacements.map(o => [o.id, o])); setOutcomes(outcomes.map(o => byId.get(o.id) ?? o)); } finally { setRunning(false); } }}>Retry retryable failures</button>}</div><pre>{format(summarize(outcomes, project))}</pre>{screen === "Compare" ? <><label><input type="checkbox" checked={changedOnly} onChange={e => setChangedOnly(e.target.checked)}/> Changed only</label><p className="muted">Differences show observed changes. Expectations determine pass/fail; no winner is inferred.</p><div className="table-wrap"><table><thead><tr><th>Case</th><th>Question</th><th>A → B</th><th>Confidence Δ</th><th>Policy A → B</th><th>Expectation A → B</th></tr></thead><tbody>{comparison.filter(x => !changedOnly || x.changed).flatMap(x => x.questions.map(q => <tr key={`${x.id}-${q.name}`}><td>{x.id}</td><td>{q.name}</td><td>{String(q.valueA)} → {String(q.valueB)}</td><td>{number(q.confidenceDelta)}</td><td>{q.bucketA} → {q.bucketB}</td><td>{String(q.expectationA ?? "—")} → {String(q.expectationB ?? "—")}</td></tr>))}</tbody></table></div></> : <div className="table-wrap"><table><thead><tr><th>Case</th><th>Status</th><th>Answers</th><th>Latency</th><th>Expectations</th></tr></thead><tbody>{outcomes.map(o => <tr key={o.id}><td>{o.id}</td><td>{o.error ?? "Complete"}</td><td>{o.result ? Object.entries(o.result.answers).map(([k,v]) => `${k}: ${String(answer(v).choice ?? answer(v).score ?? answer(v).noul ?? "—")}`).join(" · ") : "—"}</td><td>{o.latencyMs} ms</td><td>{Object.entries(o.expectations).map(([k,v]) => `${k}: ${v ? "PASS" : "FAIL"}`).join(" · ") || "—"}</td></tr>)}</tbody></table></div>}</section>}</div>}
+ {screen === "History" && <div className="workspace"><div className="row"><h2>LOCAL HISTORY</h2><div className="spacer"/><button onClick={async () => { await history("clear"); setRecords([]); }}>Clear all</button></div><p className="muted">Stored only in this browser with IndexedDB. No telemetry is sent.</p>{records.length ? records.map(r => <details className="history-item" key={r.id}><summary>{r.createdAt} · {r.result?.model ?? "Error"} · {r.result?.meta.latencyMs ?? "—"} ms · {r.error ?? "Complete"}</summary><p>Project {r.projectHash.slice(0,12)} · State {r.stateHash.slice(0,12)}</p><pre>{format(r)}</pre></details>) : <p>No runs yet.</p>}</div>}
+ <footer>JevScope · API key stays in the local server · <a href="https://github.com/jeiel85/jevscope">GitHub</a></footer></main>;
 }
+
+
+
+
+
