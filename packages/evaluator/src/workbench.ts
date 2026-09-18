@@ -4,6 +4,8 @@ export type CaseOutcome = { id: string; result?: EvaluationResult; error?: strin
 export type Runner = (state: EvaluationCase["state"], project: JevScopeProject, signal?: AbortSignal) => Promise<EvaluationResult>;
 
 export function parseCases(text: string): EvaluationCase[] {
+  if (text.length > 10_000_000) throw new Error("Case file exceeds 10 MB");
+  if (text.split(/\r?\n/).length > 10_000) throw new Error("Case file exceeds 10,000 lines");
   const ids = new Set<string>();
   return text.split(/\r?\n/).map((line, index) => ({line: line.trim(), index})).filter(({line}) => line).map(({line, index}) => {
     let value: unknown;

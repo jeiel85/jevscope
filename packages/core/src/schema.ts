@@ -78,7 +78,7 @@ export const projectSchema = z.object({
   provider: z.object({
     type: z.literal("typesafe"),
     model: z.string().min(1).default("jev-latest"),
-  }),
+  }).strict(),
   questions: z
     .record(z.string(), questionSchema)
     .refine((v) => Object.keys(v).length > 0, "At least one question is required."),
@@ -86,8 +86,8 @@ export const projectSchema = z.object({
     choiceConfidence: confidencePolicySchema,
     scoreConfidence: confidencePolicySchema,
     noul: noulPolicySchema,
-  }),
-});
+  }).strict(),
+}).strict();
 
 export const expectationSchema = z.object({
   choiceEquals: z.string().optional(),

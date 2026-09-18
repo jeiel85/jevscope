@@ -4,6 +4,10 @@ Local-first decision workbench and regression testbench for [TypeSafe AI Jev](ht
 
 **Status:** v0.1 workbench. A TypeSafe API key is required for live evaluation. [Project overview](https://jeiel85.github.io/jevscope/) · [Design documents](docs/00-product-brief.md)
 
+![JevScope workbench showing the sample project](docs/workbench.png)
+
+The [batch view](docs/batch-workbench.png) and [compare view](docs/compare-workbench.png) are also available in the local Studio.
+
 ## Quick start
 
 Requirements: Node.js 20+ and pnpm.

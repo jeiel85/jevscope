@@ -28,8 +28,22 @@ export function App() {
  const parsedState = useMemo(() => { try { return { valid: true, value: entrySchema.parse(JSON.parse(stateText)) }; } catch { return { valid: false, value: null }; } }, [stateText]);
  useEffect(() => { history("list").then(setRecords).catch(() => setError("Unable to open local history")); }, []);
  const validation = useMemo(() => { try { projectSchema.parse(JSON.parse(projectText)); return ""; } catch(e) { return e instanceof Error ? e.message : "Invalid project"; } }, [projectText]);
- async function runSingle() { if (!project || !parsedState.valid) return; const state = parsedState.value; setRunning(true); setError(""); const request = {state, questions: project.questions, model: project.provider.model}; try { const value = await evaluate(state, project); setResult(value); const item: RecordItem = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), projectHash: await hash(project), stateHash: await hash(state), request, result: value }; await history("put", item); setRecords(await history("list")); } catch(e) { const message = e instanceof Error ? e.message : "Evaluation failed"; setError(message); const item: RecordItem = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), projectHash: await hash(project), stateHash: await hash(state), request, error: message }; await history("put", item); setRecords(await history("list")); } finally { setRunning(false); } }
- async function runCases(both = false) { if (!project || (both && !variant) || cases.error) return; controller.current = new AbortController(); setRunning(true); setError(""); try { const left = await runBatch(cases.value, project, evaluate, concurrency, controller.current.signal); setOutcomes(left); if (both && !controller.current.signal.aborted) setVariantOutcomes(await runBatch(cases.value, variant!, evaluate, concurrency, controller.current.signal)); } catch(e) { setError(e instanceof Error ? e.message : "Batch failed"); } finally { setRunning(false); controller.current = null; } }
+ async function runSingle() {
+   if (!project || !parsedState.valid) return;
+   const state = parsedState.value;
+   setRunning(true); setError("");
+   const request = { state, questions: project.questions, model: project.provider.model };
+   let value: EvaluationResult | undefined;
+   let failure: string | undefined;
+   try { value = await evaluate(state, project); setResult(value); }
+   catch (e) { failure = e instanceof Error ? e.message : "Evaluation failed"; setError(failure); }
+   try {
+     const item: RecordItem = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), projectHash: await hash(project), stateHash: await hash(state), request, result: value, error: failure };
+     await history("put", item); setRecords(await history("list"));
+   } catch { setError(failure ? `${failure} History could not be saved.` : "Result returned, but local history could not be saved."); }
+   finally { setRunning(false); }
+ }
+ async function runCases(both = false) { if (!project || (both && !variant) || cases.error) return; controller.current = new AbortController(); setRunning(true); setError(""); setOutcomes([]); setVariantOutcomes([]); try { const left = await runBatch(cases.value, project, evaluate, concurrency, controller.current.signal); setOutcomes(left); if (both && !controller.current.signal.aborted) setVariantOutcomes(await runBatch(cases.value, variant!, evaluate, concurrency, controller.current.signal)); } catch(e) { setError(e instanceof Error ? e.message : "Batch failed"); } finally { setRunning(false); controller.current = null; } }
  async function readFile(input: HTMLInputElement | null, setter: (v: string) => void) { const selected = input?.files?.[0]; if (selected) setter(await selected.text()); if (input) input.value = ""; }
  const comparison = project && variant ? compare(outcomes, variantOutcomes, project, variant) : [];
  return <main><header><div><strong className="brand">JevScope</strong><span className="muted"> Decision workbench</span></div><nav aria-label="Main">{(["Workbench", "Batch", "Compare", "History"] as Screen[]).map(x => <button className={screen === x ? "active" : ""} key={x} onClick={() => setScreen(x)}>{x}</button>)}</nav></header>
